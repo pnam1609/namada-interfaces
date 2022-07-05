@@ -1,6 +1,10 @@
 # namada-interface
 
-This is the `namada-interface` monorepo. Within it, you will find the code for the web wallet implementation for Namada. it contains the following packages:
+<div style="width: 100%; display: flex; justify-content: center; margin-bottom: 32px;">
+    <img style="width: 300px;" src="banner-image.png" />
+</div>
+
+This is the `namada-interface` monorepo. Within it, you will find the code for the web wallet implementation. it contains the following packages:
 
 ```bash
 namada-interface/
