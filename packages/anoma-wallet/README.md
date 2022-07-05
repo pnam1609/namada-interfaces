@@ -1,17 +1,19 @@
 # anoma-wallet
 
-This subdirectory of the `anoma-apps` repo contains the React app for `anoma-wallet`.
+This subdirectory of the `namada-interface` repo contains the React app for `anoma-wallet`.
 
 ## Table of Contents
 
-- [Usage](#usage)
-- [Overview](#overview)
-- [Vocabulary](#vocabulary)
-- [Low Level Functionality](#functionality)
-- [Security Requirements](#requirements)
-- [Adversarial Model](#model)
-- [Approach](#approach)
-- [Workflow](#workflow)
+- [anoma-wallet](#anoma-wallet)
+  - [Table of Contents](#table-of-contents)
+  - [Usage](#usage)
+  - [Overview](#overview)
+  - [Vocabulary/ Notations](#vocabulary-notations)
+  - [Low Level Functionality:](#low-level-functionality)
+  - [Security Requirements:](#security-requirements)
+  - [Adversarial Model:](#adversarial-model)
+  - [Approach:](#approach)
+  - [Workflows:](#workflows)
 
 ## Usage
 

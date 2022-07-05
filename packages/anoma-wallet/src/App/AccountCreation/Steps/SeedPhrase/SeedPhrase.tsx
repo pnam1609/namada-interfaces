@@ -1,5 +1,5 @@
 import React from "react";
-import { Mnemonic, MnemonicLength } from "@anoma-apps/seed-management";
+import { Mnemonic, MnemonicLength } from "@namada-interface/seed-management";
 import { Button, Variant } from "components/ButtonTemporary";
 import {
   AccountInformationViewContainer,
