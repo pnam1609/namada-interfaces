@@ -1,5 +1,7 @@
 
 
+## [0.3.1](https://github.com/anoma/namada-interface/compare/namada-0.3.0...namada-0.3.1) (2024-01-26)
+
 ## 0.3.0 (2024-01-26)
 
 

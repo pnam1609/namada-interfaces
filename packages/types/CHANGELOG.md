@@ -1,5 +1,12 @@
 
 
+## [0.4.0](https://github.com/anoma/namada-interface/compare/namada-0.3.0...namada-0.4.0) (2024-01-26)
+
+
+### Features
+
+* added type test ([3a763ad](https://github.com/anoma/namada-interface/commit/3a763ad6ebf2f76147cd66b0a26939db0801dc73))
+
 ## 0.3.0 (2024-01-26)
 
 
