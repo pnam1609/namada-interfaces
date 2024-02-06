@@ -27,7 +27,6 @@ import {
   address0,
   address1,
   ethAddress0,
-  passphrase0,
   passphrase1,
   shieldedAddress0,
   shieldedAddress1,
@@ -77,11 +76,11 @@ describe("Namada", () => {
   });
 
   describe("account", () => {
-    test("create account & derive addresses", async () => {
+    test("create account", async () => {
       await createAccount(browser, page);
     });
 
-    test("import account & derive addresses", async () => {
+    test.only("import account", async () => {
       await importAccount(browser, page);
       // Wait for close page button
       const closePageBtn = await page.waitForSelector(
@@ -89,12 +88,60 @@ describe("Namada", () => {
         {}
       );
       expect(closePageBtn).not.toBeNull();
+
+      await openPopup(browser, page);
+
+      (await page.waitForSelector("[data-testid='dropdown-menu']"))?.click();
+
+      // await page.waitForSelector("[data-testid='dropdown-menu-item']");
+      await page.$$eval("li[data-testid='dropdown-menu-item']", (items) => {
+        items[1]?.click();
+      });
+      const inputs = await page.$$eval("input", (inputs) => {
+        return inputs.map((input) => input.value);
+      });
+
+      expect(inputs).toContain("tnam1qqshvryx9pngpk7mmzpzkjkm6klelgusuvmkc0uz");
+      expect(inputs).toContain(
+        "tpknam1qzz3nvg5zjwdpk5z0x9ngkf7guv9qpqrtz0da7weenwl5766pkkgvvt689t"
+      );
+      expect(inputs).toContain(
+        "znam1qr7v6mcgvwptyxgfrgjry5zk6vnapeej7j3trgqkr4k4e86ku3t04f36y62ecf57wrx24ycrxv3ez"
+      );
     });
 
-    test("import accounts with passphrases", async () => {
-      await importAccount(browser, page, { passphrase: passphrase0 });
+    test.only("import account with passphrase", async () => {
       await importAccount(browser, page, { passphrase: passphrase1 });
 
+      // Wait for close page button
+      const closePageBtn = await page.waitForSelector(
+        "[data-testid='setup-close-page-btn']"
+      );
+      expect(closePageBtn).not.toBeNull();
+
+      await openPopup(browser, page);
+
+      (await page.waitForSelector("[data-testid='dropdown-menu']"))?.click();
+
+      // await page.waitForSelector("[data-testid='dropdown-menu-item']");
+      await page.$$eval("li[data-testid='dropdown-menu-item']", (items) => {
+        items[1]?.click();
+      });
+      const inputs = await page.$$eval("input", (inputs) => {
+        return inputs.map((input) => input.value);
+      });
+
+      expect(inputs).toContain("tnam1qzpymrplvlgw8mtcwkmdjymeyp48p4u90sp8k9y8");
+      expect(inputs).toContain(
+        "tpknam1qz92dp33x7q6pnwwzvk2v6ur9kt3nnsndumrkudgy7xd3evv0xxvqq9qgeg"
+      );
+      expect(inputs).toContain(
+        "znam1qqdwwsf58j5740qqctpujgq7a6q3dck20q3hvghlq8gf5v25qv2j9kmkxqnrsuajglefencyww03l"
+      );
+    });
+
+    test.only("import accounts with the same passphrase", async () => {
+      await importAccount(browser, page, { passphrase: passphrase1 });
       // Wait for close page button
       const closePageBtn = await page.waitForSelector(
         "[data-testid='setup-close-page-btn']"
