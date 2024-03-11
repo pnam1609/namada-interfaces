@@ -1,21 +1,10 @@
 import { RegisteredCoinType, registeredCoinTypes } from "slip44";
+import { TokenInfo } from "./types";
 
 const {
   NAMADA_INTERFACE_NAMADA_TOKEN:
     nativeToken = "tnam1q8ctk7tr337f85dw69q0rsrggasxjjf5jq2s2wph",
 } = process.env;
-
-export type TokenInfo = {
-  symbol: string;
-  type: number;
-  path: number;
-  coin: string;
-  url: string;
-  address: string;
-  nativeAddress?: string;
-  isNut?: boolean;
-  coinGeckoId?: string;
-};
 
 // Declare symbols for tokens we support:
 // TODO: This will need to be refactored for mainnet!
