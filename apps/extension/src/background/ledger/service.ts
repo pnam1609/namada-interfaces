@@ -57,7 +57,7 @@ export class LedgerService {
       }
 
       const sdk = await this.sdkService.getSdk();
-      const bytes = await sdk.build_tx(
+      const builtTx = await sdk.build_tx(
         TxType.RevealPK,
         new Uint8Array(), // TODO: this is a dummy value. Is there a cleaner way?
         fromBase64(txMsg),
@@ -65,7 +65,7 @@ export class LedgerService {
       );
       const path = makeBip44Path(coinType, account.path);
 
-      return { bytes, path };
+      return { bytes: builtTx.tx_bytes(), path };
     } catch (e) {
       console.warn(e);
       throw new Error(`${e}`);
@@ -173,7 +173,7 @@ export class LedgerService {
       }
 
       const sdk = await this.sdkService.getSdk();
-      const bytes = await sdk.build_tx(
+      const builtTx = await sdk.build_tx(
         txType,
         fromBase64(specificMsg),
         fromBase64(txMsg),
@@ -181,7 +181,7 @@ export class LedgerService {
       );
       const path = makeBip44Path(coinType, account.path);
 
-      return { bytes, path };
+      return { bytes: builtTx.tx_bytes(), path };
     } catch (e) {
       console.warn(e);
       throw new Error(`${e}`);
