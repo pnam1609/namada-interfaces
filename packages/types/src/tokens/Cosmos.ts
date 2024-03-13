@@ -43,10 +43,13 @@ export const minDenomByToken = (token: string): CosmosMinDenom | undefined => {
   throw new Error(`${token} is a cosmos symbol but is not in denomTokenMap`);
 };
 
-const cosmosTokens: Record<CosmosSymbol, TokenInfo> = {
+const cosmosTokens: Record<CosmosSymbol, TokenInfo<CosmosMinDenom>> = {
   ATOM: {
     ...getSlip44Info("ATOM"),
+    address: "",
     coinGeckoId: "cosmos",
+    minDenom: "uatom",
+    decimals: 6,
   },
 
   // NOTE: Osmosis does not have a SLIP-044 entry:
@@ -58,6 +61,8 @@ const cosmosTokens: Record<CosmosSymbol, TokenInfo> = {
     url: "https://osmosis.zone/",
     address: "",
     coinGeckoId: "osmosis",
+    minDenom: "uosmo",
+    decimals: 6,
   },
 };
 

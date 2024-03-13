@@ -3,7 +3,7 @@ import BigNumber from "bignumber.js";
 import { atom } from "jotai";
 
 import { chains } from "@namada/chains";
-import { getIntegration } from "@namada/integrations";
+import { getIntegration, Namada } from "@namada/integrations";
 import { Account as AccountDetails, ChainKey, TokenType } from "@namada/types";
 
 import { chainAtom } from "slices/chain";
@@ -68,7 +68,7 @@ export const fetchBalance = createAsyncThunk<
     const {
       currency: { address: nativeToken },
     } = thunkApi.getState().chain.config;
-    const integration = getIntegration(chainKey);
+    const integration = getIntegration(chainKey) as Namada;
     const results = await integration.queryBalances(address, [
       nativeToken || tokenAddress,
     ]);
@@ -185,7 +185,7 @@ const balancesAtom = (() => {
     (get) => get(base),
     async (get, set) => {
       const accounts = await get(accountsAtom);
-      const namada = getIntegration("namada");
+      const namada = getIntegration("namada") as Namada;
 
       const {
         currency: { address: nativeToken },

@@ -297,6 +297,8 @@ describe("approvals service", () => {
         coin: "coin",
         url: "url",
         address: "address",
+        minDenom: "minDenom",
+        decimals: 0,
       };
 
       const transferMsgValue = new IbcTransferMsgValue({

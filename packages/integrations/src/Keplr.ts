@@ -1,10 +1,12 @@
 import { Coin } from "@cosmjs/launchpad";
 import { AccountData, coin, coins } from "@cosmjs/proto-signing";
 import {
+  QueryClient,
   SigningStargateClient,
   SigningStargateClientOptions,
-  StargateClient,
+  setupIbcExtension,
 } from "@cosmjs/stargate";
+import { Tendermint34Client } from "@cosmjs/tendermint-rpc";
 import {
   Keplr as IKeplr,
   Window as KeplrWindow,
@@ -17,10 +19,8 @@ import {
   Account,
   AccountType,
   Chain,
-  CosmosMinDenom,
-  CosmosTokenType,
+  CosmosSymbol,
   TokenBalance,
-  TokenType,
   minDenomByToken,
   tokenByMinDenom,
 } from "@namada/types";
@@ -38,7 +38,7 @@ export const defaultSigningClientOptions: SigningStargateClientOptions = {
   broadcastTimeoutMs: 8_000,
 };
 
-class Keplr implements Integration<Account, OfflineSigner> {
+class Keplr implements Integration<Account, OfflineSigner, CosmosSymbol> {
   private _keplr: IKeplr | undefined;
   private _offlineSigner: OfflineSigner | undefined;
   /**
@@ -46,7 +46,7 @@ class Keplr implements Integration<Account, OfflineSigner> {
    * override keplr instance for testing
    * @param chain
    */
-  constructor(public readonly chain: Chain) { }
+  constructor(public readonly chain: Chain) {}
 
   private init(): void {
     if (!this._keplr) {
@@ -156,7 +156,11 @@ class Keplr implements Integration<Account, OfflineSigner> {
       } = props.ibcProps;
       const { feeAmount } = props.txProps;
 
-      const minDenom = minDenomByToken(token.symbol as CosmosTokenType);
+      const minDenom = minDenomByToken(token.symbol);
+      if (typeof minDenom === "undefined") {
+        throw new Error(`min denom not found for token ${token.symbol}`);
+      }
+
       const client = await SigningStargateClient.connectWithSigner(
         this.chain.rpc,
         this.signer(),
@@ -200,26 +204,49 @@ class Keplr implements Integration<Account, OfflineSigner> {
     return Promise.reject("Invalid bridge props!");
   }
 
-  public async queryBalances(owner: string): Promise<TokenBalance[]> {
-    const client = await StargateClient.connect(this.chain.rpc);
+  public async queryBalances(
+    owner: string
+  ): Promise<TokenBalance<CosmosSymbol>[]> {
+    const client = await SigningStargateClient.connect(this.chain.rpc);
     const balances = (await client.getAllBalances(owner)) || [];
 
-    // TODO: Remove filter once we can handle IBC tokens properly
-    return balances
-      .filter((balance) => balance.denom === "uatom")
-      .map((coin: Coin) => {
-        const token = tokenByMinDenom(
-          coin.denom as CosmosMinDenom
-        ) as TokenType;
+    // ERIC: we want to probably just filter out the rejected promises... I think?
+    return Promise.all(
+      balances.map(async (coin: Coin) => {
+        let denom = coin.denom;
+        if (denom.startsWith("ibc/")) {
+          denom = await this.ibcAddressToDenom(denom);
+        }
+
+        const token = tokenByMinDenom(denom);
+
+        if (typeof token === "undefined") {
+          throw new Error("couldn't get min denom");
+        }
+
         const amount = new BigNumber(coin.amount);
         return {
           token,
-          amount: (coin.denom === "uatom"
-            ? amount.dividedBy(1_000_000)
-            : amount
-          ).toString(),
+          amount: amount.dividedBy(1_000_000).toString(), // ERIC: fix this
         };
-      });
+      })
+    );
+  }
+
+  private async ibcAddressToDenom(address: string): Promise<string> {
+    const tmClient = await Tendermint34Client.connect(this.chain.rpc);
+    const queryClient = new QueryClient(tmClient);
+    const ibcExtension = setupIbcExtension(queryClient);
+
+    const ibcHash = address.replace("ibc/", "");
+    const { denomTrace } = await ibcExtension.ibc.transfer.denomTrace(ibcHash);
+    const baseDenom = denomTrace?.baseDenom;
+
+    if (typeof baseDenom === "undefined") {
+      throw new Error("couldn't get denom from ibc address");
+    }
+
+    return baseDenom;
   }
 }
 
