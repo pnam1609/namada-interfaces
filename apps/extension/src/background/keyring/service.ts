@@ -387,6 +387,32 @@ export class KeyRingService {
     }
   }
 
+  async queryLastBlock(): Promise<number> {
+    try {
+      return await this._keyRing.queryLastBlock();
+    } catch (e) {
+      console.warn(e);
+      throw new Error(`Can query last block ${e}`);
+    }
+  }
+
+  async loadTempContext(
+    owner: string,
+    startBlock: number,
+    endBlock: number
+  ): Promise<boolean> {
+    const account = await this.vaultStorage.findOneOrFail(
+      KeyStore,
+      "address",
+      owner
+    );
+    return this._keyRing.loadShieldedTempContextByBlock(
+      account.public.owner,
+      startBlock,
+      endBlock
+    );
+  }
+
   async submitEthBridgeTransfer(
     ethBridgeTransferMsg: string,
     txMsg: string,
@@ -462,13 +488,12 @@ export class KeyRingService {
     return Sdk.has_masp_params();
   }
 
-  async shieldedSync(): Promise<void> {
-    const vks = (await this.vaultStorage.findAll(KeyStore))
-      .filter((a) => a.public.type === AccountType.ShieldedKeys)
-      .map((a) => a.public.owner);
-
-    const query = await this.sdkService.getQuery();
-    await query.shielded_sync(vks);
+  async saveShieldData(
+    latestBlock: number,
+    step: number,
+    minBlock: number
+  ): Promise<boolean> {
+    return this._keyRing.saveShieldData(latestBlock, step, minBlock);
   }
 
   async queryBalances(

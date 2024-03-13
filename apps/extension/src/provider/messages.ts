@@ -28,6 +28,8 @@ enum MessageType {
   ApproveTx = "approve-tx",
   QueryBalances = "query-balances",
   ShieldedSync = "shielded-sync",
+  LoadTempContext = "load-temp-context",
+  SaveShieldedSync = "save-shielded-sync",
   SubmitIbcTransfer = "submit-ibc-transfer",
   SubmitLedgerTransfer = "submit-ledger-transfer",
   EncodeRevealPublicKey = "encode-reveal-public-key",
@@ -39,6 +41,7 @@ enum MessageType {
   CheckDurability = "check-durability",
   ApproveSignArbitrary = "approve-sign-arbitrary",
   VerifyArbitrary = "verify-arbitrary",
+  QueryLastBlock = "query-last-block",
 }
 
 /**
@@ -85,6 +88,26 @@ export class ApproveConnectInterfaceMsg extends Message<void> {
 
   type(): string {
     return ApproveConnectInterfaceMsg.type();
+  }
+}
+
+export class ShieldedSyncMsg extends Message<void> {
+  public static type(): MessageType {
+    return MessageType.ShieldedSync;
+  }
+
+  constructor() {
+    super();
+  }
+
+  validate(): void {}
+
+  route(): string {
+    return Route.KeyRing;
+  }
+
+  type(): string {
+    return ShieldedSyncMsg.type();
   }
 }
 
@@ -168,23 +191,76 @@ export class QueryBalancesMsg extends Message<
   }
 }
 
-export class ShieldedSyncMsg extends Message<void> {
+export class LoadTempContextMsg extends Message<boolean> {
   public static type(): MessageType {
-    return MessageType.ShieldedSync;
+    return MessageType.LoadTempContext;
   }
 
-  constructor() {
+  constructor(
+    public readonly owner: string,
+    public readonly startIdx: number,
+    public readonly endIdx: number
+  ) {
     super();
   }
 
-  validate(): void {}
+  validate(): void {
+    validateProps(this, ["owner", "startIdx", "endIdx"]);
+  }
 
   route(): string {
     return Route.KeyRing;
   }
 
   type(): string {
-    return ShieldedSyncMsg.type();
+    return LoadTempContextMsg.type();
+  }
+}
+
+export class SaveShieldSyncMsg extends Message<boolean> {
+  public static type(): MessageType {
+    return MessageType.SaveShieldedSync;
+  }
+
+  constructor(
+    public readonly latestBlock: number,
+    public readonly step: number,
+    public readonly minBlock: number
+  ) {
+    super();
+  }
+
+  validate(): void {
+    validateProps(this, ["latestBlock", "step", "minBlock"]);
+  }
+
+  route(): string {
+    return Route.KeyRing;
+  }
+
+  type(): string {
+    return SaveShieldSyncMsg.type();
+  }
+}
+export class QueryLastBlocksMsg extends Message<number> {
+  public static type(): MessageType {
+    return MessageType.QueryLastBlock;
+  }
+
+  constructor() {
+    super();
+  }
+
+  validate(): void {
+    validateProps(this, []);
+  }
+
+  route(): string {
+    return Route.KeyRing;
+  }
+
+  type(): string {
+    return QueryLastBlocksMsg.type();
   }
 }
 

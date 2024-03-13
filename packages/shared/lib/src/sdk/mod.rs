@@ -288,6 +288,7 @@ impl Sdk {
                         1,
                         &[xsk.into()],
                         &[],
+                        None
                     )
                     .await?;
             }

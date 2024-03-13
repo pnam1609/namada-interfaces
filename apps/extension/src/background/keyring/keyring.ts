@@ -1,4 +1,4 @@
-import { deserialize } from "@dao-xyz/borsh";
+import { deserialize, serialize } from "@dao-xyz/borsh";
 
 import { chains } from "@namada/chains";
 import {
@@ -31,6 +31,7 @@ import {
   SubmitVoteProposalMsgValue,
   SubmitWithdrawMsgValue,
   TransferMsgValue,
+  TxMsgValue,
 } from "@namada/types";
 import {
   Result,
@@ -51,6 +52,8 @@ import {
   UtilityStore,
 } from "./types";
 
+import { fromBase64 } from "@cosmjs/encoding";
+import { NAMADA_TESTNET_TOKEN } from "App/constants";
 import { SdkService } from "background/sdk";
 import { VaultService } from "background/vault";
 import { KeyStore, VaultStorage } from "storage";
@@ -878,6 +881,12 @@ export class KeyRing {
     return Result.ok(null);
   }
 
+  async queryLastBlock() {
+    const query = await this.sdkService.getQuery();
+    const bigInitLastBlock = await query.query_last_block();
+    return Number(bigInitLastBlock);
+  }
+
   async queryBalances(
     owner: string,
     tokens: string[]
@@ -895,7 +904,56 @@ export class KeyRing {
       );
     } catch (e) {
       console.error(e);
-      return [];
+      return [{ token: NAMADA_TESTNET_TOKEN, amount: "0" }];
+    }
+  }
+
+  async loadShieldedTempContextByBlock(
+    owner: string,
+    startBlock: number,
+    endBlock: number
+  ): Promise<boolean> {
+    const query = await this.sdkService.getQuery();
+
+    try {
+      console.log(
+        `======== Load Shielded Context Block ${startBlock} -> ${endBlock} ========`
+      );
+      const bigInitStartBlock = BigInt(startBlock);
+      const bigInitEndBlock = BigInt(endBlock);
+      await query.load_temp_shielded_context(
+        owner,
+        bigInitStartBlock,
+        bigInitEndBlock
+      );
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  }
+
+  async saveShieldData(
+    latestBlock: number,
+    step: number,
+    minBlock: number
+  ): Promise<boolean> {
+    const query = await this.sdkService.getQuery();
+
+    try {
+      console.log(`======== Save Shield Data ========`);
+      const bigInitLatestBlock = BigInt(latestBlock);
+      const bigInitStep = BigInt(step);
+      const bigInitMintBlock = BigInt(minBlock);
+
+      return await query.save_temp_to_shielded_context(
+        bigInitLatestBlock,
+        bigInitStep,
+        bigInitMintBlock
+      );
+    } catch (e) {
+      console.error(e);
+      return false;
     }
   }
 

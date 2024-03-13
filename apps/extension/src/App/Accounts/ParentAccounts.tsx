@@ -13,6 +13,7 @@ import routes from "App/routes";
 import { ParentAccount } from "background/keyring";
 import { AccountContext } from "context";
 import { openSetupTab } from "utils";
+import browser from "webextension-polyfill";
 
 /**
  * Represents the extension's settings page.
@@ -36,6 +37,14 @@ export const ParentAccounts = (): JSX.Element => {
 
   const goToViewRecoveryPhrase = (account: DerivedAccount): void => {
     navigate(routes.viewAccountMnemonic(account.id));
+  };
+
+  const gotoShieldSync = (account: DerivedAccount): void => {
+    browser.tabs.create({
+      url: browser.runtime.getURL(
+        `popup.html#/accounts/shielded-sync/${account.alias}`
+      ),
+    });
   };
 
   const goToRenameAccount = (account: DerivedAccount): void => {
@@ -69,6 +78,7 @@ export const ParentAccounts = (): JSX.Element => {
               onDelete={() => goToDeletePage(account)}
               onViewAccount={() => goToViewAccount(account)}
               onViewRecoveryPhrase={() => goToViewRecoveryPhrase(account)}
+              onViewShieldSync={() => gotoShieldSync(account)}
               onSelectAccount={() => {
                 changeActiveAccountId(
                   account.id,

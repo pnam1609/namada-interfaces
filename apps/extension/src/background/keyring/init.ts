@@ -2,10 +2,12 @@ import {
   CheckDurabilityMsg,
   FetchAndStoreMaspParamsMsg,
   HasMaspParamsMsg,
+  LoadTempContextMsg,
   QueryAccountsMsg,
   QueryBalancesMsg,
   QueryDefaultAccountMsg,
-  ShieldedSyncMsg,
+  QueryLastBlocksMsg,
+  SaveShieldSyncMsg,
   VerifyArbitraryMsg,
 } from "provider/messages";
 import { Router } from "router";
@@ -39,9 +41,9 @@ export function init(router: Router, service: KeyRingService): void {
   router.registerMessage(QueryAccountsMsg);
   router.registerMessage(QueryDefaultAccountMsg);
   router.registerMessage(QueryBalancesMsg);
-  router.registerMessage(ShieldedSyncMsg);
   router.registerMessage(QueryParentAccountsMsg);
   router.registerMessage(SaveAccountSecretMsg);
+  router.registerMessage(LoadTempContextMsg);
   router.registerMessage(ScanAccountsMsg);
   router.registerMessage(SetActiveAccountMsg);
   router.registerMessage(TransferCompletedEvent);
@@ -54,6 +56,8 @@ export function init(router: Router, service: KeyRingService): void {
   router.registerMessage(RevealAccountMnemonicMsg);
   router.registerMessage(RenameAccountMsg);
   router.registerMessage(VerifyArbitraryMsg);
+  router.registerMessage(QueryLastBlocksMsg);
+  router.registerMessage(SaveShieldSyncMsg);
 
   router.addHandler(ROUTE, getHandler(service));
 }

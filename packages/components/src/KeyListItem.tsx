@@ -13,6 +13,7 @@ type KeyListItemProps = {
   onRename: () => void;
   onDelete: () => void;
   onViewAccount: () => void;
+  onViewShieldSync: () => void;
   onSelectAccount: () => void;
   onViewRecoveryPhrase: () => void;
   dropdownPosition?: "top" | "bottom";
@@ -39,6 +40,7 @@ export const KeyListItem = ({
   onViewAccount,
   onSelectAccount,
   onViewRecoveryPhrase,
+  onViewShieldSync,
   dropdownPosition = "top",
   ...props
 }: KeyListItemProps): JSX.Element => {
@@ -75,6 +77,10 @@ export const KeyListItem = ({
             label: "View Seed Phrase",
             onClick:
               type === AccountType.Mnemonic ? onViewRecoveryPhrase : undefined,
+          },
+          {
+            label: "Shielded Sync",
+            onClick: onViewShieldSync,
           },
         ]}
       />

@@ -2,10 +2,12 @@ import {
   CheckDurabilityMsg,
   FetchAndStoreMaspParamsMsg,
   HasMaspParamsMsg,
+  LoadTempContextMsg,
   QueryAccountsMsg,
   QueryBalancesMsg,
   QueryDefaultAccountMsg,
-  ShieldedSyncMsg,
+  QueryLastBlocksMsg,
+  SaveShieldSyncMsg,
   VerifyArbitraryMsg,
 } from "provider/messages";
 import { Env, Handler, InternalHandler, Message } from "router";
@@ -61,8 +63,12 @@ export const getHandler: (service: KeyRingService) => Handler = (service) => {
         return handleQueryAccountsMsg(service)(env, msg as QueryAccountsMsg);
       case QueryBalancesMsg:
         return handleQueryBalancesMsg(service)(env, msg as QueryBalancesMsg);
-      case ShieldedSyncMsg:
-        return handleShieldedSyncMsg(service)(env, msg as ShieldedSyncMsg);
+      case LoadTempContextMsg:
+        return handleLoadTempContext(service)(env, msg as LoadTempContextMsg);
+      case SaveShieldSyncMsg:
+        return handleSaveShieldedSync(service)(env, msg as SaveShieldSyncMsg);
+      case QueryLastBlocksMsg:
+        return handleRequestLastBlock(service)(env, msg as QueryLastBlocksMsg);
       case SetActiveAccountMsg:
         return handleSetActiveAccountMsg(service)(
           env,
@@ -233,11 +239,27 @@ const handleQueryBalancesMsg: (
   };
 };
 
-const handleShieldedSyncMsg: (
+const handleLoadTempContext: (
   service: KeyRingService
-) => InternalHandler<ShieldedSyncMsg> = (service) => {
+) => InternalHandler<LoadTempContextMsg> = (service) => {
+  return async (_, { owner, startIdx, endIdx }) => {
+    return await service.loadTempContext(owner, startIdx, endIdx);
+  };
+};
+
+const handleSaveShieldedSync: (
+  service: KeyRingService
+) => InternalHandler<SaveShieldSyncMsg> = (service) => {
+  return async (_, { latestBlock, minBlock, step }) => {
+    return await service.saveShieldData(latestBlock, step, minBlock);
+  };
+};
+
+const handleRequestLastBlock: (
+  service: KeyRingService
+) => InternalHandler<QueryLastBlocksMsg> = (service) => {
   return async () => {
-    return await service.shieldedSync();
+    return await service.queryLastBlock();
   };
 };
 

@@ -12,16 +12,21 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 dev = []
+default = ["console_log"]
 multicore = ["wasm-bindgen-rayon", "namada/multicore"]
 
 [dependencies]
+cfg-if = "0.1"
+log = "0.4"
+console_log = { version = "0.2", optional = true }
+env_logger = "0.9"
 async-trait = {version = "0.1.51"}
 tiny-bip39 = "0.8.2"
 chrono = "0.4.22"
 getrandom = { version = "0.2.7", features = ["js"] }
 gloo-utils = { version = "0.1.5", features = ["serde"] }
 js-sys = "0.3.60"
-namada = { git = "https://github.com/anoma/namada", version = "0.31.8", default-features = false, features = ["namada-sdk"] }
+namada = { git = "https://github.com/pnam1609/namada", version = "0.31.9", default-features = false, features = ["namada-sdk"] }
 rand = "0.8.5"
 rexie = "0.5"
 serde = "^1.0.181"

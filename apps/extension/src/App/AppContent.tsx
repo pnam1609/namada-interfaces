@@ -24,6 +24,8 @@ import { ChangePassword, ConnectedSites, Network } from "./Settings";
 import { Setup } from "./Setup";
 import routes from "./routes";
 import { LoadingStatus } from "./types";
+import ShieldedSync from "./ShieldedSync";
+import Root from "./Root";
 
 const STORE_DURABILITY_INFO =
   'Store is not durable. This might cause problems when persisting data on disk.\
@@ -92,20 +94,6 @@ export const AppContent = (): JSX.Element => {
   }, []);
 
   useEffect(() => {
-    if (
-      !passwordInitialized &&
-      accountLoadingStatus === LoadingStatus.Completed
-    ) {
-      void openSetupTab();
-      return;
-    }
-
-    if (accountLoadingStatus === LoadingStatus.Completed) {
-      navigate(getStartPage(accounts));
-    }
-  }, [accounts, passwordInitialized, accountLoadingStatus]);
-
-  useEffect(() => {
     void (async () => {
       const isDurable = await requester.sendMessage(
         Ports.Background,
@@ -128,7 +116,7 @@ export const AppContent = (): JSX.Element => {
       )}
 
       <Routes>
-        <Route path={"/"} element={<></>} />
+        <Route path={"/"} element={<Root />} />
         <Route path={routes.setup()} element={<Setup />} />
         <Route path={routes.connectedSites()} element={<ConnectedSites />} />
         <Route
@@ -146,6 +134,7 @@ export const AppContent = (): JSX.Element => {
             <Route path={routes.deleteAccount()} element={<DeleteAccount />} />
             <Route path={routes.viewAccount()} element={<ViewAccount />} />
             <Route path={routes.renameAccount()} element={<RenameAccount />} />
+            <Route path={routes.shieldedSync()} element={<ShieldedSync />} />
             <Route
               path={routes.viewAccountMnemonic()}
               element={<ViewMnemonic />}

@@ -1,6 +1,8 @@
 use js_sys::Uint8Array;
 use namada::address::Address;
 use namada::core::borsh::BorshSerialize;
+use log::Level;
+use log::info;
 use namada::eth_bridge_pool::TransferToEthereum;
 use namada::governance::storage::keys as governance_storage;
 use namada::governance::utils::{compute_proposal_result, ProposalVotes, TallyVote, VotePower};
@@ -8,17 +10,17 @@ use namada::governance::{ProposalType, ProposalVote};
 use namada::ledger::eth_bridge::bridge_pool::query_signed_bridge_pool;
 use namada::ledger::parameters::storage;
 use namada::ledger::queries::RPC;
+use namada::storage::BlockHeight;
 use namada::masp::ExtendedViewingKey;
 use namada::proof_of_stake::Epoch;
-use namada::sdk::masp::{DefaultLogger, ShieldedContext};
+use namada::sdk::masp::{DefaultLogger, ShieldedContext,ProgressLogger};
 use namada::sdk::masp_primitives::asset_type::AssetType;
-use namada::sdk::masp_primitives::sapling::ViewingKey;
 use namada::sdk::masp_primitives::transaction::components::ValueSum;
 use namada::sdk::masp_primitives::zip32::ExtendedFullViewingKey;
 use namada::sdk::rpc::{
     format_denominated_amount, get_public_key_at, get_token_balance, get_total_staked_tokens,
     query_epoch, query_native_token, query_proposal_by_id, query_proposal_votes,
-    query_storage_value,
+    query_storage_value, query_block,
 };
 use namada::token;
 use namada::uint::I256;
@@ -29,7 +31,10 @@ use wasm_bindgen::prelude::*;
 use crate::rpc_client::HttpClient;
 use crate::sdk::{io::WebIo, masp};
 use crate::types::query::ProposalInfo;
+use crate::utils::generate_array;
 use crate::utils::{set_panic_hook, to_js_result};
+use serde_json;
+use namada::sdk::masp_primitives::sapling::ViewingKey;
 
 #[wasm_bindgen]
 /// Represents an API for querying the ledger
@@ -285,10 +290,17 @@ impl Query {
                 1,
                 &[],
                 &owners,
+                None
             )
             .await?;
 
         Ok(())
+    }
+
+    pub async fn query_last_block(&self) -> u64 {
+        let last_block_height_opt = query_block(&self.client).await.unwrap();
+        let last_block_height = last_block_height_opt.map_or_else(BlockHeight::first, |block| block.height);
+        last_block_height.0
     }
 
     /// Queries shielded balance for a given extended viewing key
@@ -323,6 +335,78 @@ impl Query {
         };
 
         Ok(res)
+    }
+
+    pub async fn load_temp_shielded_context(
+        &self,
+        owner: String,
+        start_block: u64,
+        end_block: u64,
+    ) -> Result<(), JsError> {
+        console_log::init_with_level(Level::Info);
+        let viewing_key = match ExtendedViewingKey::from_str(&owner) {
+            Ok(xvk) => ExtendedFullViewingKey::from(xvk).fvk.vk,
+            Err(e2) => return Err(JsError::new(&format!("{}", e2)))};
+        info!("Starting Load from {} to {}", start_block,end_block);
+        // We are recreating shielded context to avoid multiple mutable borrows
+        let mut shielded: ShieldedContext<masp::WebShieldedUtils> = ShieldedContext::default();
+
+        // let _ = shielded.load().await;
+        // TODO: pass supported asset types
+        let native_token = "tnam1q87wtaqqtlwkw927gaff34hgda36huk0kgry692a";
+        let _ = shielded
+            .precompute_asset_types(
+                &self.client,
+                vec![&Address::from_str(native_token).unwrap()],
+            )
+            .await;
+
+        let start_block_height: Option<BlockHeight> = Some(BlockHeight(start_block));
+        let end_block_height: Option<BlockHeight> = Some(BlockHeight(end_block));
+        info!("Before Fetch Start {} end {}", start_block,end_block);
+
+        shielded
+            .fetch(
+                &self.client,
+                &DefaultLogger::new(&WebIo),
+                end_block_height,
+                20,
+                &[],
+                &[viewing_key],
+                start_block_height
+            )
+            .await?;
+        info!("Fetch Done {} end {}", start_block,end_block);
+        let _ = shielded.save_temp(start_block,end_block).await;
+        Ok(())
+    }
+
+    pub async fn save_temp_to_shielded_context(
+        &self,
+        latest_block : u64,
+        step: u64,
+        min_block: u64,
+    ) -> Result<bool, JsError> {
+        console_log::init_with_level(Level::Info);
+        let mut shielded: ShieldedContext<masp::WebShieldedUtils> = ShieldedContext::default();
+        
+        let list_block = generate_array(latest_block,Some(step),Some(min_block));
+
+        info!("List block save_temp_to_shielded_context {:#?}", list_block);
+
+        for &start_block in &list_block {
+            let raw_end_block = start_block + step - 1;
+            let end_block = match raw_end_block > latest_block {
+                true => latest_block,
+                false => raw_end_block,
+            };
+            info!("Loading indexed db from {} to {}", start_block,end_block);
+            let _  = shielded.load_temp(start_block, end_block).await;
+            // shielded.tx_note_map
+        }
+
+        let _ = shielded.save().await;
+        Ok(true)
     }
 
     pub async fn query_balance(

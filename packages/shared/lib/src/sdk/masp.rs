@@ -1,14 +1,18 @@
 use async_trait::async_trait;
 use gloo_utils::format::JsValueSerdeExt;
 use namada::core::borsh::{BorshDeserialize, BorshSerialize};
+use namada::sdk::bytes;
 use namada::sdk::masp::{ContextSyncStatus, ShieldedContext, ShieldedUtils};
 use namada::sdk::masp_proofs::prover::LocalTxProver;
 use rexie::{Error, ObjectStore, Rexie, TransactionMode};
 use wasm_bindgen::{JsError, JsValue};
 
 use crate::utils::to_bytes;
+use log::Level;
+use log::info;
 
 const DB_PREFIX: &str = "Namada::MASP";
+const DB_MASP_TEMP: &str = "Namada::MASP:Temp";
 const SHIELDED_CONTEXT_TABLE: &str = "ShieldedContext";
 const SHIELDED_CONTEXT_KEY_CONFIRMED: &str = "shielded-context-confirmed";
 const SHIELDED_CONTEXT_KEY_SPECULATIVE: &str = "shielded-context-speculative";
@@ -62,6 +66,39 @@ impl WebShieldedUtils {
         Ok(rexie)
     }
 
+    pub async fn build_temp_database() -> Result<Rexie, Error> {
+        let rexie = Rexie::builder(DB_MASP_TEMP)
+            .version(1)
+            .add_object_store(ObjectStore::new(SHIELDED_CONTEXT_TABLE))
+            .build()
+            .await?;
+
+        Ok(rexie)
+    }
+
+    pub async fn set_temp_context(
+        rexie: &Rexie,
+        context: JsValue,
+        start_block: u64,
+        end_block:u64
+    ) -> Result<(), Error> {
+        //TODO: add readwriteflush
+        
+        let transaction =
+            rexie.transaction(&[SHIELDED_CONTEXT_TABLE], TransactionMode::ReadWrite)?;
+
+        let context_store = transaction.store(SHIELDED_CONTEXT_TABLE)?;
+        let context_name = format!("{}-{}-{}", SHIELDED_CONTEXT_KEY_CONFIRMED, start_block, end_block);
+        let key: &str = context_name.as_str();
+
+        context_store
+            .put(&context, Some(&JsValue::from_str(key)))
+            .await?;
+        transaction.commit().await?;
+
+        Ok(())
+    }
+
     pub async fn set_context(
         rexie: &Rexie,
         context: JsValue,
@@ -89,6 +126,20 @@ impl WebShieldedUtils {
         let context_store = transaction.store(SHIELDED_CONTEXT_TABLE)?;
 
         let key = Self::get_key(confirmed);
+
+        let context = context_store.get(&JsValue::from_str(key)).await?;
+
+        Ok(context)
+    }
+
+    async fn get_temp_context(rexie: &Rexie, confirmed: bool,start_block: u64,end_block:u64) -> Result<JsValue, Error> {
+        let transaction =
+            rexie.transaction(&[SHIELDED_CONTEXT_TABLE], TransactionMode::ReadOnly)?;
+
+        let context_store = transaction.store(SHIELDED_CONTEXT_TABLE)?;
+
+        let key_string = format!("{}-{}-{}", SHIELDED_CONTEXT_KEY_CONFIRMED, start_block, end_block);
+        let key: &str = key_string.as_str();
 
         let context = context_store.get(&JsValue::from_str(key)).await?;
 
@@ -134,50 +185,94 @@ impl ShieldedUtils for WebShieldedUtils {
         )
     }
 
-    async fn load<U: ShieldedUtils>(
+    async fn load_temp<U: ShieldedUtils>(
         &self,
         ctx: &mut ShieldedContext<U>,
         force_confirmed: bool,
+        start_block : u64,
+        end_block: u64,
     ) -> std::io::Result<()> {
-        let db = Self::build_database().await.map_err(Self::to_io_err)?;
+        console_log::init_with_level(Level::Info);
+        let db = Self::build_temp_database().await.map_err(Self::to_io_err)?;
+        
         let confirmed = force_confirmed || get_confirmed(&ctx.sync_status);
-
-        let stored_ctx = Self::get_context(&db, confirmed)
+        
+        let stored_ctx = Self::get_temp_context(&db, confirmed,start_block,end_block) 
             .await
             .map_err(Self::to_io_err)?;
+        
         let stored_ctx_bytes = to_bytes(stored_ctx);
 
-        let context: ShieldedContext<U> = if stored_ctx_bytes.is_empty() {
-            ShieldedContext::default()
-        } else {
-            ShieldedContext::deserialize(&mut &stored_ctx_bytes[..])?
-        };
+        info!("Loading Temp from {} to {} block data {:#?}", start_block,end_block,stored_ctx_bytes);
 
         *ctx = ShieldedContext {
             utils: ctx.utils.clone(),
-            ..context
+            ..ShieldedContext::deserialize(&mut &stored_ctx_bytes[..])?
         };
 
         Ok(())
     }
 
-    async fn save<U: ShieldedUtils>(&self, ctx: &ShieldedContext<U>) -> std::io::Result<()> {
+    async fn load<U: ShieldedUtils>(
+        &self,
+        ctx: &mut ShieldedContext<U>,
+        force_confirmed: bool,
+    ) -> std::io::Result<()> {
+        console_log::init_with_level(Level::Info);
+        let db = Self::build_database().await.map_err(Self::to_io_err)?;
+        
+        let confirmed = force_confirmed || get_confirmed(&ctx.sync_status);
+        info!("ctx.sync_status================================== {:#?}",confirmed);
+        
+        
+        let stored_ctx = Self::get_context(&db, confirmed) 
+            .await
+            .map_err(Self::to_io_err)?;
+        
+        let stored_ctx_bytes = to_bytes(stored_ctx);
+        
+
+        *ctx = ShieldedContext {
+            utils: ctx.utils.clone(),
+            ..ShieldedContext::deserialize(&mut &stored_ctx_bytes[..])?
+        };
+
+        Ok(())
+    }
+
+    async fn save_temp<U: ShieldedUtils>(&self,ctx: &ShieldedContext<U>,start_block: u64,end_block: u64) -> std::io::Result<()> {
+        console_log::init_with_level(Level::Info);
         let mut bytes = Vec::new();
         ctx.serialize(&mut bytes)
             .expect("cannot serialize shielded context");
-        let db = Self::build_database().await.map_err(Self::to_io_err)?;
+        info!("Saving Temp from {} to {} block data {:#?}", start_block,end_block,bytes);
+        let db: Rexie = Self::build_temp_database().await.map_err(Self::to_io_err)?;   
+        // let confirmed = get_confirmed(&ctx.sync_status);
+        Self::set_temp_context(&db, JsValue::from_serde(&bytes).unwrap(),start_block,end_block)
+            .await
+            .map_err(Self::to_io_err)?;
+        info!("Done Saved Temp from {} to {} block", start_block,end_block);
+        Ok(())
+    }
+
+    async fn save<U: ShieldedUtils>(&self, ctx: &ShieldedContext<U>) -> std::io::Result<()> {
+        console_log::init_with_level(Level::Info);
+        let mut bytes = Vec::new();
+        ctx.serialize(&mut bytes)
+            .expect("cannot serialize shielded context");
+        let db: Rexie = Self::build_database().await.map_err(Self::to_io_err)?;        
         let confirmed = get_confirmed(&ctx.sync_status);
 
         Self::set_context(&db, JsValue::from_serde(&bytes).unwrap(), confirmed)
             .await
             .map_err(Self::to_io_err)?;
-
+        info!("Done set context");
         if let ContextSyncStatus::Confirmed = ctx.sync_status {
             Self::remove_speculative_context(&db)
                 .await
                 .map_err(Self::to_io_err)?;
         }
-
+        info!("Remove after set context");
         Ok(())
     }
 }
