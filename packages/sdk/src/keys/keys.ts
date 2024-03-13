@@ -13,7 +13,7 @@ import {
   PaymentAddress,
 } from "@namada/shared";
 import { Bip44Path } from "@namada/types";
-import { makeBip44PathArray } from "@namada/utils";
+import { makeBip44PathArray } from "../utils";
 import { Address, ShieldedKeys, TransparentKeys } from "./types";
 
 const DEFAULT_PATH: Bip44Path = {
