@@ -1,8 +1,9 @@
+use gloo_utils::format::JsValueSerdeExt;
 use js_sys::Uint8Array;
+use log::info;
+use log::Level;
 use namada::address::Address;
 use namada::core::borsh::BorshSerialize;
-use log::Level;
-use log::info;
 use namada::eth_bridge_pool::TransferToEthereum;
 use namada::governance::storage::keys as governance_storage;
 use namada::governance::utils::{compute_proposal_result, ProposalVotes, TallyVote, VotePower};
@@ -10,20 +11,22 @@ use namada::governance::{ProposalType, ProposalVote};
 use namada::ledger::eth_bridge::bridge_pool::query_signed_bridge_pool;
 use namada::ledger::parameters::storage;
 use namada::ledger::queries::RPC;
-use namada::storage::BlockHeight;
 use namada::masp::ExtendedViewingKey;
 use namada::proof_of_stake::Epoch;
-use namada::sdk::masp::{DefaultLogger, ShieldedContext,ProgressLogger};
+use namada::sdk::borsh::BorshDeserialize;
+use namada::sdk::masp::{DefaultLogger, ProgressLogger, ShieldedContext};
 use namada::sdk::masp_primitives::asset_type::AssetType;
 use namada::sdk::masp_primitives::transaction::components::ValueSum;
 use namada::sdk::masp_primitives::zip32::ExtendedFullViewingKey;
 use namada::sdk::rpc::{
     format_denominated_amount, get_public_key_at, get_token_balance, get_total_staked_tokens,
-    query_epoch, query_native_token, query_proposal_by_id, query_proposal_votes,
-    query_storage_value, query_block,
+    query_block, query_epoch, query_native_token, query_proposal_by_id, query_proposal_votes,
+    query_storage_value,
 };
+use namada::storage::BlockHeight;
 use namada::token;
 use namada::uint::I256;
+use rexie::Rexie;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
@@ -32,15 +35,23 @@ use crate::rpc_client::HttpClient;
 use crate::sdk::{io::WebIo, masp};
 use crate::types::query::ProposalInfo;
 use crate::utils::generate_array;
-use crate::utils::{set_panic_hook, to_js_result};
-use serde_json;
+use crate::utils::{set_panic_hook, to_bytes, to_js_result};
+use namada::sdk::bytes;
 use namada::sdk::masp_primitives::sapling::ViewingKey;
+use rexie::{Error, ObjectStore, TransactionMode};
+use serde_json;
 
 #[wasm_bindgen]
 /// Represents an API for querying the ledger
 pub struct Query {
     client: HttpClient,
 }
+
+const DB_PREFIX: &str = "Namada::MASP";
+const DB_MASP_TEMP: &str = "Namada::MASP:Temp";
+const SHIELDED_CONTEXT_TABLE: &str = "ShieldedContext";
+const SHIELDED_CONTEXT_KEY_CONFIRMED: &str = "shielded-context-confirmed";
+const SHIELDED_CONTEXT_KEY_SPECULATIVE: &str = "shielded-context-speculative";
 
 #[wasm_bindgen]
 impl Query {
@@ -287,10 +298,10 @@ impl Query {
                 &self.client,
                 &DefaultLogger::new(&WebIo),
                 None,
+                None,
                 1,
                 &[],
                 &owners,
-                None
             )
             .await?;
 
@@ -299,7 +310,8 @@ impl Query {
 
     pub async fn query_last_block(&self) -> u64 {
         let last_block_height_opt = query_block(&self.client).await.unwrap();
-        let last_block_height = last_block_height_opt.map_or_else(BlockHeight::first, |block| block.height);
+        let last_block_height =
+            last_block_height_opt.map_or_else(BlockHeight::first, |block| block.height);
         last_block_height.0
     }
 
@@ -337,6 +349,138 @@ impl Query {
         Ok(res)
     }
 
+    async fn build_temp_database(&self) -> Result<Rexie, Error> {
+        let rexie = Rexie::builder(DB_MASP_TEMP)
+            .version(1)
+            .add_object_store(ObjectStore::new(SHIELDED_CONTEXT_TABLE))
+            .build()
+            .await?;
+        Ok(rexie)
+    }
+
+    async fn set_temp_context(
+        &self,
+        rexie: &Rexie,
+        context: JsValue,
+        start_block: u64,
+        end_block: u64,
+    ) -> Result<(), Error> {
+        //TODO: add readwriteflush
+
+        let transaction =
+            rexie.transaction(&[SHIELDED_CONTEXT_TABLE], TransactionMode::ReadWrite)?;
+
+        let context_store = transaction.store(SHIELDED_CONTEXT_TABLE)?;
+        let context_name = format!(
+            "{}-{}-{}",
+            SHIELDED_CONTEXT_KEY_CONFIRMED, start_block, end_block
+        );
+        let key: &str = context_name.as_str();
+
+        context_store
+            .put(&context, Some(&JsValue::from_str(key)))
+            .await?;
+        transaction.commit().await?;
+
+        Ok(())
+    }
+
+    async fn get_temp_context(
+        &self,
+        rexie: &Rexie,
+        start_block: u64,
+        end_block: u64,
+    ) -> Result<JsValue, Error> {
+        console_log::init_with_level(Level::Info);
+        let transaction =
+            rexie.transaction(&[SHIELDED_CONTEXT_TABLE], TransactionMode::ReadOnly)?;
+
+        let context_store = transaction.store(SHIELDED_CONTEXT_TABLE)?;
+
+        let key_string = format!(
+            "{}-{}-{}",
+            SHIELDED_CONTEXT_KEY_CONFIRMED, start_block, end_block
+        );
+        info!("key_string{:#?}", key_string);
+
+        let key: &str = key_string.as_str();
+
+        let context = context_store.get(&JsValue::from_str(key)).await?;
+
+        info!(
+            "get_temp_context from {} to {} block data {:#?}",
+            start_block, end_block, context
+        );
+
+        Ok(context)
+    }
+
+    async fn load_temp(&self, start_block: u64, end_block: u64) -> Result<Vec<u8>, JsError> {
+        console_log::init_with_level(Level::Info);
+        let raw_db = self.build_temp_database().await;
+        let db = match raw_db {
+            Ok(x) => x,
+            Err(e2) => return Err(JsError::new(&format!("{}", e2))),
+        };
+
+        let raw_stored_ctx = self.get_temp_context(&db, start_block, end_block).await;
+
+        let stored_ctx = match raw_stored_ctx {
+            Ok(y) => y,
+            Err(e2) => return Err(JsError::new(&format!("{}", e2))),
+        };
+        info!(
+            "stored_ctx from {} to {} block data {:#?}",
+            start_block, end_block, stored_ctx
+        );
+
+        let stored_ctx_bytes = to_bytes(stored_ctx);
+
+        info!(
+            "Loading Temp from {} to {} block data {:#?}",
+            start_block, end_block, stored_ctx_bytes
+        );
+
+        Ok(stored_ctx_bytes)
+    }
+
+    async fn save_temp(
+        &self,
+        stored_ctx_bytes: &Vec<u8>,
+        start_block: u64,
+        end_block: u64,
+    ) -> Result<(), JsError> {
+        console_log::init_with_level(Level::Info);
+        info!(
+            "Saving Temp from {} to {} block data {:#?}",
+            start_block, end_block, stored_ctx_bytes
+        );
+        info!(
+            "stored_ctx_bytes from {} to {} block data {:#?}",
+            start_block, end_block, stored_ctx_bytes
+        );
+        let raw_db = self.build_temp_database().await;
+        let db = match raw_db {
+            Ok(x) => x,
+            Err(e2) => return Err(JsError::new(&format!("{}", e2))),
+        };
+
+        // let confirmed = get_confirmed(&ctx.sync_status);
+        let _ = self
+            .set_temp_context(
+                &db,
+                JsValue::from_serde(stored_ctx_bytes).unwrap(),
+                start_block,
+                end_block,
+            )
+            .await;
+        info!(
+            "Done Saved Temp from {} to {} block",
+            start_block, end_block
+        );
+        Ok(())
+    }
+
     pub async fn load_temp_shielded_context(
         &self,
         owner: String,
@@ -346,14 +490,15 @@ impl Query {
         console_log::init_with_level(Level::Info);
         let viewing_key = match ExtendedViewingKey::from_str(&owner) {
             Ok(xvk) => ExtendedFullViewingKey::from(xvk).fvk.vk,
-            Err(e2) => return Err(JsError::new(&format!("{}", e2)))};
-        info!("Starting Load from {} to {}", start_block,end_block);
+            Err(e2) => return Err(JsError::new(&format!("{}", e2))),
+        };
+        info!("Starting Load from {} to {}", start_block, end_block);
         // We are recreating shielded context to avoid multiple mutable borrows
         let mut shielded: ShieldedContext<masp::WebShieldedUtils> = ShieldedContext::default();
 
         // let _ = shielded.load().await;
         // TODO: pass supported asset types
-        let native_token = "tnam1q87wtaqqtlwkw927gaff34hgda36huk0kgry692a";
+        let native_token = "tnam1qxgfw7myv4dh0qna4hq0xdg6lx77fzl7dcem8h7e";
         let _ = shielded
             .precompute_asset_types(
                 &self.client,
@@ -361,38 +506,55 @@ impl Query {
             )
             .await;
 
-        let start_block_height: Option<BlockHeight> = Some(BlockHeight(start_block));
-        let end_block_height: Option<BlockHeight> = Some(BlockHeight(end_block));
-        info!("Before Fetch Start {} end {}", start_block,end_block);
+        let last_indexed_tx: Option<BlockHeight> = Some(BlockHeight(start_block));
+        let last_query_height: Option<BlockHeight> = Some(BlockHeight(end_block));
+        info!("Before Fetch Start {} end {}", start_block, end_block);
 
-        shielded
-            .fetch(
+        // shielded
+        //     .fetch(
+        //         &self.client,
+        //         &DefaultLogger::new(&WebIo),
+        //         start_block_height,
+        //         end_block_height,
+        //         20,
+        //         &[],
+        //         &[viewing_key],
+        //     )
+        //     .await?;
+        // shielded.unscanned.
+        let _ = shielded
+            .fetch_shielded_transfers(
                 &self.client,
                 &DefaultLogger::new(&WebIo),
-                end_block_height,
-                20,
-                &[],
-                &[viewing_key],
-                start_block_height
+                last_indexed_tx,
+                last_query_height,
             )
-            .await?;
-        info!("Fetch Done {} end {}", start_block,end_block);
-        let _ = shielded.save_temp(start_block,end_block).await;
+            .await;
+        info!("Fetch Done {} end {}", start_block, end_block);
+        // let _ = shielded.save_temp(start_block,end_block).await;
+        let mut bytes = Vec::new();
+        shielded
+            .serialize(&mut bytes)
+            .expect("cannot serialize shielded context");
+        info!("Before save of {} end {}", start_block, end_block);
+        let _ = self.save_temp(&bytes, start_block, end_block).await;
+        info!("after save of {} end {}", start_block, end_block);
         Ok(())
     }
 
     pub async fn save_temp_to_shielded_context(
         &self,
-        latest_block : u64,
+        latest_block: u64,
         step: u64,
         min_block: u64,
     ) -> Result<bool, JsError> {
         console_log::init_with_level(Level::Info);
-        let mut shielded: ShieldedContext<masp::WebShieldedUtils> = ShieldedContext::default();
-        
-        let list_block = generate_array(latest_block,Some(step),Some(min_block));
+        // let mut shielded: ShieldedContext<masp::WebShieldedUtils> = ShieldedContext::default();
+        info!("step {}", step);
+        let list_block = generate_array(latest_block, Some(step), Some(min_block));
 
         info!("List block save_temp_to_shielded_context {:#?}", list_block);
+        // let mut accumulated_stored_ctx_bytes = Vec::new();
 
         for &start_block in &list_block {
             let raw_end_block = start_block + step - 1;
@@ -400,12 +562,55 @@ impl Query {
                 true => latest_block,
                 false => raw_end_block,
             };
-            info!("Loading indexed db from {} to {}", start_block,end_block);
-            let _  = shielded.load_temp(start_block, end_block).await;
-            // shielded.tx_note_map
+            let stored_ctx_bytes_byte_block = self.load_temp(start_block, end_block).await?;
+            let mut shielded_temp: ShieldedContext<masp::WebShieldedUtils> =
+                ShieldedContext::default();
+            info!("shielded_temp before {:#?}", shielded_temp);
+            shielded_temp = ShieldedContext {
+                utils: shielded_temp.utils.clone(),
+                ..ShieldedContext::deserialize(&mut &stored_ctx_bytes_byte_block[..])?
+            };
+            let logger = &DefaultLogger::new(&WebIo);
+
+            let txs = logger.scan(shielded_temp.unscanned.clone());
+            for (indexed_tx, (epoch, tx, stx)) in txs {
+                if Some(indexed_tx) > last_witnessed_tx {
+                    shielded_temp.update_witness_map(indexed_tx, &stx)?;
+                }
+                let mut vk_heights = BTreeMap::new();
+                std::mem::swap(&mut vk_heights, &mut shielded_temp.vk_heights);
+                for (vk, h) in vk_heights
+                    .iter_mut()
+                    .filter(|(_vk, h)| **h < Some(indexed_tx))
+                {
+                    shielded_temp.scan_tx(
+                        indexed_tx,
+                        epoch,
+                        &tx,
+                        &stx,
+                        vk,
+                        native_token.clone(),
+                    )?;
+                    *h = Some(indexed_tx);
+                }
+                // possibly remove unneeded elements from the cache.
+                self.unscanned.scanned(&indexed_tx);
+                std::mem::swap(&mut vk_heights, &mut self.vk_heights);
+                let _ = self.save().await;
+            }
+
+            info!("shielded_temp after {:#?}", shielded_temp);
         }
 
-        let _ = shielded.save().await;
+        // info!("accumulated_stored_ctx_bytes {:#?}", accumulated_stored_ctx_bytes);
+        // info!("accumulated_stored_ctx_bytes {:#?}", shielded);
+        // shielded = ShieldedContext {
+        //     utils: shielded.utils.clone(),
+        //     ..ShieldedContext::deserialize(&mut &accumulated_stored_ctx_bytes[..])?
+        // };
+        // info!("shielded {:#?}", shielded);
+
+        // let _ = shielded.save().await;
         Ok(true)
     }
 

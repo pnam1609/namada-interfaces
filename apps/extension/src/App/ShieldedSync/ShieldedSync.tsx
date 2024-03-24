@@ -84,6 +84,7 @@ export const ShieldedSync = () => {
       stepValueBlock,
       currentIdxSynced
     );
+    console.log('arrayStepBlock', arrayStepBlock)
 
     setProgress((prev) => ({
       ...prev,
@@ -121,7 +122,7 @@ export const ShieldedSync = () => {
     ) {
       (async () => {
         try {
-          const stepBlock = 500;
+          const stepBlock = 10;
 
           const currentIdxSynced = Number(
             localStorage.getItem(BLOCK_INDEX_SYNCED_KEY) || "1"
@@ -131,12 +132,14 @@ export const ShieldedSync = () => {
             `Fetch From ${currentIdxSynced} block to ${latestBlockIdx}`
           );
 
+          const latestBlockIdxTest = 40
+
           setStatusShieldedSync(ProgressStatus.FetchingMASP);
 
           await fetchingAllMASP(
             requester,
             accountFetch.address,
-            latestBlockIdx,
+            latestBlockIdxTest,
             currentIdxSynced,
             stepBlock
           );
@@ -144,7 +147,7 @@ export const ShieldedSync = () => {
           setStatusShieldedSync(ProgressStatus.Scanning);
           await saveShieldedSync(
             requester,
-            latestBlockIdx,
+            latestBlockIdxTest,
             stepBlock,
             currentIdxSynced
           );

@@ -185,34 +185,6 @@ impl ShieldedUtils for WebShieldedUtils {
         )
     }
 
-    async fn load_temp<U: ShieldedUtils>(
-        &self,
-        ctx: &mut ShieldedContext<U>,
-        force_confirmed: bool,
-        start_block : u64,
-        end_block: u64,
-    ) -> std::io::Result<()> {
-        console_log::init_with_level(Level::Info);
-        let db = Self::build_temp_database().await.map_err(Self::to_io_err)?;
-        
-        let confirmed = force_confirmed || get_confirmed(&ctx.sync_status);
-        
-        let stored_ctx = Self::get_temp_context(&db, confirmed,start_block,end_block) 
-            .await
-            .map_err(Self::to_io_err)?;
-        
-        let stored_ctx_bytes = to_bytes(stored_ctx);
-
-        info!("Loading Temp from {} to {} block data {:#?}", start_block,end_block,stored_ctx_bytes);
-
-        *ctx = ShieldedContext {
-            utils: ctx.utils.clone(),
-            ..ShieldedContext::deserialize(&mut &stored_ctx_bytes[..])?
-        };
-
-        Ok(())
-    }
-
     async fn load<U: ShieldedUtils>(
         &self,
         ctx: &mut ShieldedContext<U>,
@@ -237,21 +209,6 @@ impl ShieldedUtils for WebShieldedUtils {
             ..ShieldedContext::deserialize(&mut &stored_ctx_bytes[..])?
         };
 
-        Ok(())
-    }
-
-    async fn save_temp<U: ShieldedUtils>(&self,ctx: &ShieldedContext<U>,start_block: u64,end_block: u64) -> std::io::Result<()> {
-        console_log::init_with_level(Level::Info);
-        let mut bytes = Vec::new();
-        ctx.serialize(&mut bytes)
-            .expect("cannot serialize shielded context");
-        info!("Saving Temp from {} to {} block data {:#?}", start_block,end_block,bytes);
-        let db: Rexie = Self::build_temp_database().await.map_err(Self::to_io_err)?;   
-        // let confirmed = get_confirmed(&ctx.sync_status);
-        Self::set_temp_context(&db, JsValue::from_serde(&bytes).unwrap(),start_block,end_block)
-            .await
-            .map_err(Self::to_io_err)?;
-        info!("Done Saved Temp from {} to {} block", start_block,end_block);
         Ok(())
     }
 
