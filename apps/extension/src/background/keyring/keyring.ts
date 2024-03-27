@@ -31,7 +31,6 @@ import {
   SubmitVoteProposalMsgValue,
   SubmitWithdrawMsgValue,
   TransferMsgValue,
-  TxMsgValue,
 } from "@namada/types";
 import {
   Result,
@@ -52,7 +51,6 @@ import {
   UtilityStore,
 } from "./types";
 
-import { fromBase64 } from "@cosmjs/encoding";
 import { NAMADA_TESTNET_TOKEN } from "App/constants";
 import { SdkService } from "background/sdk";
 import { VaultService } from "background/vault";
