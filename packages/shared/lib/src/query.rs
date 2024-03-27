@@ -570,36 +570,35 @@ impl Query {
                 utils: shielded_temp.utils.clone(),
                 ..ShieldedContext::deserialize(&mut &stored_ctx_bytes_byte_block[..])?
             };
-            let logger = &DefaultLogger::new(&WebIo);
-
-            let txs = logger.scan(shielded_temp.unscanned.clone());
-            for (indexed_tx, (epoch, tx, stx)) in txs {
-                if Some(indexed_tx) > last_witnessed_tx {
-                    shielded_temp.update_witness_map(indexed_tx, &stx)?;
-                }
-                let mut vk_heights = BTreeMap::new();
-                std::mem::swap(&mut vk_heights, &mut shielded_temp.vk_heights);
-                for (vk, h) in vk_heights
-                    .iter_mut()
-                    .filter(|(_vk, h)| **h < Some(indexed_tx))
-                {
-                    shielded_temp.scan_tx(
-                        indexed_tx,
-                        epoch,
-                        &tx,
-                        &stx,
-                        vk,
-                        native_token.clone(),
-                    )?;
-                    *h = Some(indexed_tx);
-                }
-                // possibly remove unneeded elements from the cache.
-                self.unscanned.scanned(&indexed_tx);
-                std::mem::swap(&mut vk_heights, &mut self.vk_heights);
-                let _ = self.save().await;
-            }
-
             info!("shielded_temp after {:#?}", shielded_temp);
+
+            // let logger = &DefaultLogger::new(&WebIo);
+            //     let txs = logger.scan(shielded_temp.unscanned.clone());
+            //     for (indexed_tx, (epoch, tx, stx)) in txs {
+            //         if Some(indexed_tx) > last_witnessed_tx {
+            //             shielded_temp.update_witness_map(indexed_tx, &stx)?;
+            //         }
+            //         let mut vk_heights = BTreeMap::new();
+            //         std::mem::swap(&mut vk_heights, &mut shielded_temp.vk_heights);
+            //         for (vk, h) in vk_heights
+            //             .iter_mut()
+            //             .filter(|(_vk, h)| **h < Some(indexed_tx))
+            //         {
+            //             shielded_temp.scan_tx(
+            //                 indexed_tx,
+            //                 epoch,
+            //                 &tx,
+            //                 &stx,
+            //                 vk,
+            //                 native_token.clone(),
+            //             )?;
+            //             *h = Some(indexed_tx);
+            //         }
+            //         // possibly remove unneeded elements from the cache.
+            //         self.unscanned.scanned(&indexed_tx);
+            //         std::mem::swap(&mut vk_heights, &mut self.vk_heights);
+            //         let _ = self.save().await;
+            //     }
         }
 
         // info!("accumulated_stored_ctx_bytes {:#?}", accumulated_stored_ctx_bytes);
